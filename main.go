@@ -1,28 +1,38 @@
 package main
 
 import (
-  "net/http"
-  "io/ioutil"
-  "fmt"
+	"log"
+	"net/http"
+	"sync"
+	"time"
 )
 
 func main() {
-  // アクセスするためのURI
-  uri := "http://localhost:8080"
+	uri := "http://localhost:8080"
 
-  // GETリクエストでアクセス
-  // err でエラー時にエラーの内容が入り、panicで処理を中断してエラーの中身を出力
-  // deferで関数が終了するとクローズするおまじない
-  resp, err := http.Get(uri)
-  if err != nil {
-    panic(err)
-  }
-  defer resp.Body.Close()
+	maxConnection := make(chan bool, 200)
+	wg := &sync.WaitGroup{}
 
-  // レスポンスを取り出す処理
-  byteArray, err := ioutil.ReadAll(resp.Body)
-  if err != nil {
-    panic(err)
-  }
-  fmt.Println(string(byteArray))
+	count := 0
+	start := time.Now()
+	for maxRequest := 0; maxRequest < 10000; maxRequest++ {
+		wg.Add(1)
+		maxConnection <- true
+		go func() {
+			defer wg.Done()
+
+			resp, err := http.Get(uri)
+			if err != nil {
+				return
+			}
+			defer resp.Body.Close()
+
+			count++
+			<-maxConnection
+		}()
+	}
+	wg.Wait()
+	end := time.Now()
+	log.Printf("%d 回のリクエストに成功しました!\n", count)
+	log.Printf("%f 秒処理に時間がかかりました!\n", (end.Sub(start)).Seconds())
 }
